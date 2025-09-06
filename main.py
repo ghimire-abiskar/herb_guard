@@ -26,7 +26,7 @@ async def predict(file: UploadFile = File(...)):
     image_data = await file.read()
 
     # Simulate a prediction result. This can later be replaced with actual ML model logic.
-    prediction = random.choice(["Cat", "Dog", "Bird"])
+    prediction = random.choice(["Poisonous","Safe"])
 
     # Return the prediction result
     return PredictionResponse(prediction=prediction)
