@@ -1,37 +1,75 @@
 from fastapi import FastAPI, File, UploadFile
 from pydantic import BaseModel
-import random  # To simulate a dummy prediction
 from fastapi.middleware.cors import CORSMiddleware
+import torch
+from torchvision import transforms
+from PIL import Image
+import io
+import json
 
-# Enable CORS for all origins (useful for development)
+# --------------------
+# CONFIG
+# --------------------
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+IMAGE_SIZE = 224
+MODEL_PATH = "models/ensemble_traced.pt"
+CLASSES_PATH = "models/classes.json"
 
-# Initialize FastAPI app
+# --------------------
+# FASTAPI APP
+# --------------------
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],  
+    allow_headers=["*"],  
 )
 
-# Define the response model for prediction results
+# --------------------
+# RESPONSE MODEL
+# --------------------
 class PredictionResponse(BaseModel):
-    prediction: str  # Dummy prediction result
+    prediction: str
 
-# Endpoint to handle image upload and prediction
+# --------------------
+# LOAD MODEL & CLASSES ONCE
+# --------------------
+ensemble = torch.jit.load(MODEL_PATH, map_location=DEVICE)
+ensemble.eval()
+
+with open(CLASSES_PATH, "r") as f:
+    classes = json.load(f)
+
+transform = transforms.Compose([
+    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
+
+# --------------------
+# PREDICTION FUNCTION
+# --------------------
+def predict_image(image_bytes):
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    x = transform(img).unsqueeze(0).to(DEVICE)
+    with torch.no_grad():
+        logits = ensemble(x)
+        pred_idx = torch.argmax(logits, dim=1).item()
+    return classes[pred_idx]
+
+# --------------------
+# ENDPOINT
+# --------------------
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(file: UploadFile = File(...)):
-    # Read the uploaded image file into memory (for now, we're ignoring the actual file contents)
     image_data = await file.read()
-
-    # Simulate a prediction result. This can later be replaced with actual ML model logic.
-    prediction = random.choice(["poisonous","Safe"])
-
-    # Return the prediction result
+    prediction = predict_image(image_data)
     return PredictionResponse(prediction=prediction)
 
-# Optional: Root endpoint to test if the server is running
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the ML API! Send images to /predict"}
+    return {"message": "Welcome to the Herb-Testing API! Send images to /predict"}
