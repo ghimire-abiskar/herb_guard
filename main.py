@@ -6,7 +6,8 @@ from torchvision import transforms
 from PIL import Image
 import io
 import json
-
+from fastapi import Request
+from fastapi.responses import JSONResponse
 # --------------------
 # CONFIG
 # --------------------
@@ -71,5 +72,8 @@ async def predict(file: UploadFile = File(...)):
     return PredictionResponse(prediction=prediction)
 
 @app.get("/")
-async def root():
+async def root(request: Request):
+    # Handle HEAD requests gracefully
+    if request.method == "HEAD":
+        return JSONResponse(content=None)
     return {"message": "Welcome to the Herb-Testing API! Send images to /predict"}
